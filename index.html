@@ -364,6 +364,38 @@ body {
 .delta.down { color: var(--red);   background: rgba(185,28,28,0.07); }
 .delta.flat { color: var(--ink-30); background: var(--ink-05); }
 
+/* ── NW DELTA (on hero card) ── */
+.nw-delta {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  min-height: 20px;
+}
+.nw-delta .nd-up   { color: #6ee7b7; }
+.nw-delta .nd-down { color: #fca5a5; }
+.nw-delta .nd-flat { color: rgba(255,255,255,0.3); }
+
+/* ── SYNC STATUS ── */
+.sync-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--r);
+  background: var(--paper);
+  border: var(--border);
+}
+.sdot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ink-10); flex-shrink: 0;
+  transition: background 0.3s;
+}
+.sdot.connecting { background: #f59e0b; animation: blink 1s ease-in-out infinite; }
+.sdot.uploading  { background: var(--accent); animation: blink 0.8s ease-in-out infinite; }
+.sdot.ok         { background: var(--green); }
+.sdot.error      { background: var(--red); }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:.2} }
+.sync-lbl { font-size: 11px; letter-spacing: 0.04em; color: var(--ink-60); font-weight: 500; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1024px) {
   .sidebar { transform: translateX(-100%); }
@@ -455,6 +487,7 @@ body {
       <div class="scard hero">
         <div class="sc-lbl">期末淨資產</div>
         <div class="sc-val big mask-target" id="s-nw">$0</div>
+        <div class="nw-delta mask-target" id="s-nw-delta"></div>
       </div>
       <div class="scard">
         <div class="sc-lbl">當月收入</div>
@@ -629,8 +662,7 @@ function normalise(r) {
   };
 }
 
-/* ══ DELTA HELPER ══ */
-// deriveFn: optional function(prevRecord)=>number for computed comparisons
+/* ══ DELTA HELPER (只用於 asset / income / bill) ══ */
 function deltaBadge(type, name, curAmt, selM, deriveFn) {
   const prevM = selM === 1 ? 12 : selM - 1;
   const prev = records.find(r =>
@@ -647,18 +679,57 @@ function deltaBadge(type, name, curAmt, selM, deriveFn) {
   return `<span class="delta ${cls} mask-target">${sign}&nbsp;${val}</span>`;
 }
 
+/* ══ NETWORTH SNAPSHOT (30分鐘快照) ══ */
+const SNAP_KEY  = 'nw_snapshot_v1';
+const SNAP_TTL  = 30 * 60 * 1000; // 30分鐘
+
+function saveSnapshot(nw) {
+  const now = Date.now();
+  let snap;
+  try { snap = JSON.parse(localStorage.getItem(SNAP_KEY)); } catch { snap = null; }
+  // 只在距上次快照超過 30 分鐘時才更新
+  if (!snap || (now - snap.ts) >= SNAP_TTL) {
+    localStorage.setItem(SNAP_KEY, JSON.stringify({ nw, ts: now }));
+  }
+}
+
+function getSnapshotDelta(curNw) {
+  let snap;
+  try { snap = JSON.parse(localStorage.getItem(SNAP_KEY)); } catch { snap = null; }
+  if (!snap) return '';
+  const age = Date.now() - snap.ts;
+  const diff = curNw - snap.nw;
+  if (diff === 0) return `<span class="nd-flat">與 30 分鐘前持平</span>`;
+  const sign  = diff > 0 ? '▲' : '▼';
+  const cls   = diff > 0 ? 'nd-up' : 'nd-down';
+  const val   = '$' + Math.abs(Math.round(diff)).toLocaleString('zh-TW');
+  const mins  = Math.round(age / 60000);
+  const label = mins < 2 ? '剛才' : mins < 60 ? `${mins} 分鐘前` : `${Math.round(mins/60)} 小時前`;
+  return `<span class="${cls}">${sign} ${val} 較 ${label}</span>`;
+}
+
 /* ══ SYNC STATE UI ══ */
 function setSyncState(state) {
   const dot = document.getElementById('sdot');
   const lbl = document.getElementById('sync-lbl');
   const lu  = document.getElementById('last-update');
   dot.className = 'sdot';
-  const map = { loading:'blue', uploading:'blue', offline:'orange', error:'red' };
-  if (map[state]) dot.classList.add(map[state]);
-  const txt = { loading:'連接中...', uploading:'上傳中...', ok:'已同步', offline:'離線模式', error:'同步失敗' };
-  lbl.textContent = txt[state] || state;
+
+  const cfg = {
+    connecting: { cls: 'connecting', text: '正在連線取得最新數據...' },
+    uploading:  { cls: 'uploading',  text: '上傳中，請稍候...' },
+    ok:         { cls: 'ok',         text: '數據為最新版本' },
+    offline:    { cls: 'error',      text: '目前使用本地快取，無法連線' },
+    error:      { cls: 'error',      text: '上傳失敗，將於下次操作重試' },
+  };
+  const c = cfg[state] || { cls: '', text: state };
+  if (c.cls) dot.classList.add(c.cls);
+  lbl.textContent = c.text;
+
   if (state === 'ok') {
-    lu.textContent = '更新 ' + new Date().toLocaleTimeString('zh-TW', { hour:'2-digit', minute:'2-digit' });
+    lu.textContent = '上傳完畢 · ' + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+  } else if (state === 'connecting') {
+    lu.textContent = '正在連線...';
   }
 }
 
