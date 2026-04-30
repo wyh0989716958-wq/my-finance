@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>資產負債表</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
@@ -126,18 +125,6 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .toggle.on::after { left: 19px; }
-.chart-btn {
-  width: 100%; background: none; border: var(--border);
-  border-radius: var(--r); padding: 11px 14px;
-  font-size: 13px; color: var(--ink-60); cursor: pointer;
-  text-align: left; display: flex; justify-content: space-between; align-items: center;
-  font-family: var(--sans); margin-bottom: 8px;
-}
-.chart-wrap {
-  display: none; border: var(--border); border-radius: var(--r);
-  background: var(--paper); padding: 12px; margin-bottom: 20px; height: 150px;
-}
-.chart-wrap canvas { width: 100% !important; height: 126px !important; }
 .sb-spacer { flex: 1; min-height: 16px; }
 .sb-footer { padding-top: 20px; border-top: var(--border); display: flex; flex-direction: column; gap: 10px; }
 .sync-row { display: flex; align-items: center; gap: 6px; }
@@ -257,6 +244,16 @@ body {
 }
 .bcard.paid { opacity: .32; }
 .bc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; gap: 8px; }
+.bc-drag {
+  color: var(--ink-10);
+  font-size: 16px;
+  cursor: grab;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  margin-right: 2px;
+  touch-action: none;
+}
+.bc-drag:hover { color: var(--ink-30); }
 .bc-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bc-edit {
   background: none; border: var(--border); border-radius: 6px;
@@ -455,14 +452,6 @@ body {
       <button class="toggle" id="priv-btn" onclick="togglePrivacy()"></button>
     </div>
 
-    <div class="nav-lbl">資產走勢</div>
-    <button class="chart-btn" onclick="toggleChart()">
-      <span id="chart-btn-txt">顯示折線圖</span><span id="chart-arrow">↓</span>
-    </button>
-    <div class="chart-wrap" id="chart-container">
-      <canvas id="netWorthChart"></canvas>
-    </div>
-
     <div class="sb-spacer"></div>
 
     <div class="sb-footer">
@@ -487,7 +476,7 @@ body {
       <div class="scard hero">
         <div class="sc-lbl">期末淨資產</div>
         <div class="sc-val big mask-target" id="s-nw">$0</div>
-        <div class="nw-delta mask-target" id="s-nw-delta"></div>
+        <div class="nw-delta mask-target" id="s-nw-delta" style="margin-top:10px;font-size:12px;opacity:0.75"></div>
       </div>
       <div class="scard">
         <div class="sc-lbl">當月收入</div>
@@ -615,13 +604,12 @@ body {
 
 <script>
 /* ══ CONFIG ══ */
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwlusAGzQbHw0pf4BmD-cBMnvZoDyPNQfNx6024Yqkhhp8Ltizgj-s4ZrAjDKFHZiQiNw/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxI4RRRvTJNk_SNH0LkDywLXDPy7k-WxCHSEzuJg7LI0m08BZIsIi-aYq1nKinIERKx0Q/exec';
 const STORAGE_KEY = 'finance_records_v26'; // unchanged — keeps old local data
 
 let records = [];
 let editId = null;
 let privacyOn = false;
-let myChart = null;
 let syncLock = false;
 let sortableAssets = null;
 let sortableBills = null;
@@ -632,14 +620,18 @@ const fMonth = document.getElementById('f-month');
 const fEnd = document.getElementById('f-end');
 const curM = new Date().getMonth() + 1;
 
+// Remember last viewed month across sessions
+const LAST_MONTH_KEY = 'last_viewed_month';
+const savedMonth = parseInt(localStorage.getItem(LAST_MONTH_KEY)) || curM;
+
 for (let i = 1; i <= 12; i++) {
   mSel.insertAdjacentHTML('beforeend', `<option value="${i}">${i}月 結算報表</option>`);
   fMonth.insertAdjacentHTML('beforeend', `<option value="${i}">${i}月</option>`);
   fEnd.insertAdjacentHTML('beforeend', `<option value="${i}">${i}月</option>`);
 }
-mSel.value = curM;
-fMonth.value = curM;
-fEnd.value = curM;
+mSel.value = savedMonth;
+fMonth.value = savedMonth;
+fEnd.value = savedMonth;
 
 /* ══ HELPERS ══ */
 function fmt(n) {
@@ -746,47 +738,6 @@ function togglePrivacy() {
   document.getElementById('main-ui').classList.toggle('masked', privacyOn);
 }
 
-/* ══ CHART ══ */
-function toggleChart() {
-  const wrap = document.getElementById('chart-container');
-  const open = wrap.style.display !== 'block';
-  wrap.style.display = open ? 'block' : 'none';
-  document.getElementById('chart-arrow').textContent = open ? '↑' : '↓';
-  document.getElementById('chart-btn-txt').textContent = open ? '隱藏折線圖' : '顯示折線圖';
-  if (open) updateChart();
-}
-function updateChart() {
-  const data = Array.from({ length: 12 }, (_, i) =>
-    records.filter(r => r.type === 'asset' && r.month === i + 1)
-           .reduce((a, b) => a + Number(b.amount), 0)
-  );
-  if (myChart) myChart.destroy();
-  myChart = new Chart(document.getElementById('netWorthChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels: ['1','2','3','4','5','6','7','8','9','10','11','12'],
-      datasets: [{
-        data,
-        borderColor: '#0a0a0a', borderWidth: 1.5,
-        tension: 0.4, fill: true,
-        backgroundColor: 'rgba(10,10,10,0.04)',
-        pointRadius: 3, pointBackgroundColor: '#0a0a0a',
-      }]
-    },
-    options: {
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { display: false },
-        x: {
-          grid: { display: false }, border: { display: false },
-          ticks: { font: { size: 9, family:"'DM Mono',monospace" }, color: 'rgba(10,10,10,0.3)' }
-        }
-      }
-    }
-  });
-}
-
 /* ══ TABS ══ */
 function switchTab(name, btn) {
   ['overview','debt','bill','invest'].forEach(t =>
@@ -872,6 +823,10 @@ function toggleBill(id) {
 /* ══ RENDER ══ */
 function renderAll() {
   const selM = parseInt(mSel.value);
+
+  // Save last viewed month
+  localStorage.setItem(LAST_MONTH_KEY, selM);
+
   let stats = { nw:0, inc:0, exp:0, rlz:0, unrlz:0, billTotal:0, billPaid:0, billCount:0 };
   let h = { inc:'', ast:'', bill:'', debt:'', rlz:'', unrlz:'' };
 
@@ -905,6 +860,7 @@ function renderAll() {
       const db = deltaBadge('bill', r.name, r.amount, selM);
       h.bill += `<div class="bcard ${r.paid?'paid':''}" data-id="${r.id}">
         <div class="bc-top">
+          <span class="drag-hdl bc-drag">⠿</span>
           <span class="bc-name">${esc(r.name)}</span>
           <button class="bc-edit" onclick="event.stopPropagation();openModal(${r.id})">編輯</button>
         </div>
@@ -919,40 +875,27 @@ function renderAll() {
     } else if (debtOn) {
       stats.exp += r.amount;
       const isLast = selM === r.endMonth;
-      const db = deltaBadge('expense', r.name, r.amount, selM);
       h.debt += `<div class="dcard ${isLast?'last':''}" onclick="openModal(${r.id})">
         <div>
           <div class="dc-name">${esc(r.name)}</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-            <span class="dc-sub mask-target">月繳 ${fmt(r.amount)}</span>
-            ${db}
-          </div>
+          <div class="dc-sub mask-target">月繳 ${fmt(r.amount)}</div>
         </div>
         <span class="dc-badge ${isLast?'lst':'act'}">${isLast?'本月還清':'還款中'}</span></div>`;
 
     } else if (r.type === 'realized' && exact) {
       stats.rlz += r.amount;
       const c = r.amount >= 0 ? 'var(--red)' : 'var(--green)';
-      const db = deltaBadge('realized', r.name, r.amount, selM);
       h.rlz += `<tr class="inv-row" onclick="openModal(${r.id})">
         <td>${esc(r.name)}</td>
-        <td style="text-align:right">
-          <div class="mask-target" style="color:${c};font-family:var(--mono);font-weight:500">${fmt(r.amount)}</div>
-          <div style="text-align:right;margin-top:3px">${db}</div>
-        </td></tr>`;
+        <td class="mask-target" style="color:${c}">${fmt(r.amount)}</td></tr>`;
 
     } else if (r.type === 'unrealized' && exact) {
       const diff = r.amount - (r.cost || r.amount);
       stats.unrlz += diff;
       const c = diff >= 0 ? 'var(--red)' : 'var(--green)';
-      // for unrealized: compare the derived diff (market - cost) vs prev month's same
-      const db = deltaBadge('unrealized', r.name, diff, selM, p => p.amount - (p.cost || p.amount));
       h.unrlz += `<tr class="inv-row" onclick="openModal(${r.id})">
         <td><div>${esc(r.name)}</div><div class="inv-sub">成本 ${fmt(r.cost)}</div></td>
-        <td style="text-align:right">
-          <div class="mask-target" style="color:${c};font-family:var(--mono);font-weight:500">${fmt(diff)}</div>
-          <div style="text-align:right;margin-top:3px">${db}</div>
-        </td></tr>`;
+        <td class="mask-target" style="color:${c}">${fmt(diff)}</td></tr>`;
     }
   });
 
@@ -975,9 +918,27 @@ function renderAll() {
   document.getElementById('s-bill-total').textContent = fmt(stats.billTotal);
   document.getElementById('s-bill-count').textContent = `${stats.billPaid} / ${stats.billCount}`;
 
-  if (document.getElementById('chart-container').style.display === 'block') updateChart();
-  if (privacyOn) document.getElementById('main-ui').classList.add('masked');
+  // ── Networth vs previous month ──
+  const prevM = selM === 1 ? 12 : selM - 1;
+  const prevNw = records
+    .filter(r => r.type === 'asset' && r.month === prevM)
+    .reduce((a, r) => a + r.amount, 0);
+  const nwDiff = stats.nw - prevNw;
+  const nwDeltaEl = document.getElementById('s-nw-delta');
+  if (nwDeltaEl) {
+    if (prevNw === 0 && stats.nw === 0) {
+      nwDeltaEl.innerHTML = '';
+    } else if (nwDiff === 0) {
+      nwDeltaEl.innerHTML = `<span style="color:rgba(255,255,255,0.4)">與上月持平</span>`;
+    } else {
+      const sign  = nwDiff > 0 ? '▲' : '▼';
+      const color = nwDiff > 0 ? '#6ee7b7' : '#fca5a5';
+      const val   = '$' + Math.abs(Math.round(nwDiff)).toLocaleString('zh-TW');
+      nwDeltaEl.innerHTML = `<span style="color:${color}">${sign} ${val} 較上月</span>`;
+    }
+  }
 
+  if (privacyOn) document.getElementById('main-ui').classList.add('masked');
   requestAnimationFrame(setupSortables);
 }
 
@@ -1002,7 +963,9 @@ function setupSortables() {
   if (billEl && billEl.querySelector('[data-id]')) {
     if (sortableBills) { sortableBills.destroy(); sortableBills = null; }
     sortableBills = Sortable.create(billEl, {
-      animation: 160, ghostClass: 'sortable-ghost',
+      animation: 160,
+      handle: '.bc-drag',       // ← only drag from handle, not whole card
+      ghostClass: 'sortable-ghost',
       onEnd() {
         const ids = Array.from(billEl.children).map(c => c.dataset.id).filter(Boolean);
         const rest = records.filter(r => !(r.type === 'bill' && r.month === selM));
@@ -1090,6 +1053,14 @@ async function saveAndRender() {
 function changeMonth() {
   const targetM = parseInt(mSel.value);
   const prevM   = targetM === 1 ? 12 : targetM - 1;
+
+  // Persist last viewed month
+  localStorage.setItem(LAST_MONTH_KEY, targetM);
+
+  // Update modal month default
+  fMonth.value = targetM;
+  fEnd.value = targetM;
+
   const hasData = records.some(r =>
     ['asset','bill','unrealized'].includes(r.type) && r.month === targetM
   );
