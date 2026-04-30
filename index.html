@@ -91,7 +91,15 @@ body {
 }
 .sb-inner {
   display: flex; flex-direction: column;
-  min-height: 100%; padding: 30px 24px 28px;
+  min-height: 100%;
+  padding: 30px 24px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+.sb-spacer { flex: 1; min-height: 12px; max-height: 40px; }
+.sb-footer {
+  padding-top: 20px;
+  border-top: var(--border);
+  display: flex; flex-direction: column; gap: 10px;
+  flex-shrink: 0;  /* never get squished */
 }
 .brand { padding-bottom: 24px; border-bottom: var(--border); margin-bottom: 24px; }
 .brand-name { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; }
@@ -125,9 +133,6 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .toggle.on::after { left: 19px; }
-.sb-spacer { flex: 1; min-height: 16px; }
-.sb-footer { padding-top: 20px; border-top: var(--border); display: flex; flex-direction: column; gap: 10px; }
-.sync-row { display: flex; align-items: center; gap: 6px; }
 .sdot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
 .sdot.blue { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
 .sdot.orange { background: #f59e0b; }
@@ -236,34 +241,46 @@ body {
 .bs-lbl { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-30); margin-bottom: 8px; }
 .bs-val { font-family: var(--mono); font-size: 30px; font-weight: 500; color: var(--accent); letter-spacing: -.04em; }
 .bs-cnt { font-family: var(--mono); font-size: 17px; color: var(--ink-60); text-align: right; }
-.bill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 12px; }
+
+/* Desktop: 3 columns, each card wide enough for full name */
+.bill-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
 .bcard {
   background: var(--white); border: var(--border);
-  border-radius: var(--r-lg); padding: 18px;
+  border-radius: var(--r-lg); padding: 22px;
   transition: opacity var(--tr);
+  min-width: 0;
 }
 .bcard.paid { opacity: .32; }
-.bc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; gap: 8px; }
+.bc-top {
+  display: flex; justify-content: space-between;
+  align-items: center; margin-bottom: 16px; gap: 8px;
+}
 .bc-drag {
-  color: var(--ink-10);
-  font-size: 16px;
-  cursor: grab;
-  flex-shrink: 0;
-  padding: 2px 4px;
-  margin-right: 2px;
-  touch-action: none;
+  color: var(--ink-10); font-size: 16px;
+  cursor: grab; flex-shrink: 0;
+  padding: 2px 4px; margin-right: 2px; touch-action: none;
 }
 .bc-drag:hover { color: var(--ink-30); }
-.bc-name { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-name {
+  font-size: 14px; font-weight: 500;
+  flex: 1; min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .bc-edit {
   background: none; border: var(--border); border-radius: 6px;
   padding: 4px 10px; font-size: 11px; color: var(--ink-30);
   cursor: pointer; font-family: var(--sans); white-space: nowrap; flex-shrink: 0;
 }
-.bc-bot { display: flex; justify-content: space-between; align-items: center; }
-.bc-amt { font-family: var(--mono); font-size: 20px; font-weight: 500; letter-spacing: -.03em; }
+.bc-bot { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+.bc-amt { font-family: var(--mono); font-size: 22px; font-weight: 500; letter-spacing: -.03em; }
 .chkbox {
-  width: 28px; height: 28px; border-radius: 8px;
+  width: 30px; height: 30px; border-radius: 8px;
   border: 1.5px solid var(--ink-10); background: var(--paper);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; font-size: 14px; color: white;
@@ -395,8 +412,18 @@ body {
 
 /* ── RESPONSIVE ── */
 @media (max-width: 1024px) {
-  .sidebar { transform: translateX(-100%); }
+  .sidebar {
+    transform: translateX(-100%);
+    /* On mobile, sidebar height must include scrollable area for footer */
+    height: 100%;
+    max-height: 100vh;
+  }
   .sidebar.open { transform: translateX(0); box-shadow: 24px 0 60px rgba(0,0,0,.18); }
+  .sb-inner {
+    /* Ensure content can scroll and footer always reachable */
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 16px));
+  }
+  .sb-spacer { min-height: 8px; max-height: 20px; }
   .main { margin-left: 0; }
   .main-inner { padding: calc(var(--header-h) + 22px) 18px 52px; }
   .mob-header { display: flex; }
@@ -413,6 +440,17 @@ body {
   .main-inner { gap: 18px; }
   .row-item { padding: 14px 16px; }
   .row-amt { font-size: 14px; }
+  /* Mobile bill cards: 2 per row, compact */
+  .bill-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .bcard { padding: 14px; }
+  .bc-name {
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bc-amt { font-size: 17px; }
+  .chkbox { width: 26px; height: 26px; }
 }
 @media (max-width: 380px) {
   .bill-grid { grid-template-columns: 1fr; }
@@ -861,10 +899,10 @@ function renderAll() {
       h.bill += `<div class="bcard ${r.paid?'paid':''}" data-id="${r.id}">
         <div class="bc-top">
           <span class="drag-hdl bc-drag">⠿</span>
-          <span class="bc-name">${esc(r.name)}</span>
+          <span class="bc-name" title="${esc(r.name)}">${esc(r.name)}</span>
           <button class="bc-edit" onclick="event.stopPropagation();openModal(${r.id})">編輯</button>
         </div>
-        <div class="bc-bot" style="align-items:flex-end">
+        <div class="bc-bot">
           <div>
             <span class="bc-amt mask-target">${fmt(r.amount)}</span>
             <div style="margin-top:4px">${db}</div>
