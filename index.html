@@ -440,20 +440,15 @@ body {
   .main-inner { gap: 18px; }
   .row-item { padding: 14px 16px; }
   .row-amt { font-size: 14px; }
-  /* Mobile bill cards: 2 per row, compact */
+  /* Mobile: restore original 2-col bill cards */
   .bill-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .bcard { padding: 14px; }
-  .bc-name {
-    font-size: 13px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .bc-amt { font-size: 17px; }
+  .bcard { padding: 16px; }
+  .bc-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bc-amt { font-size: 18px; }
   .chkbox { width: 26px; height: 26px; }
 }
 @media (max-width: 380px) {
-  .bill-grid { grid-template-columns: 1fr; }
+  .bill-grid { grid-template-columns: 1fr 1fr; } /* keep 2-col even on smallest phones */
   .tab-btn { padding: 10px 13px; font-size: 12px; }
   .modal-box { padding: 20px 18px 40px; }
 }
